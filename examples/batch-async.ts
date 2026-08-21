@@ -45,10 +45,6 @@
 import { createClient } from './env.js';
 import { pickPublishedTemplate } from './pick-template.js';
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function main(): Promise<void> {
   const client = createClient();
   if (!client) {
@@ -74,19 +70,15 @@ async function main(): Promise<void> {
   // rendered document plus a final RenderCompletion, each signed with the
   // organisation's webhook secret (see the module comment above for a
   // verifying handler sketch). Poll here as the reliable alternative:
-  for (;;) {
-    const status = await client.getJobStatus(job.jobId);
-    console.log(`  ${status.status}: ${status.renderedCount} rendered`);
-    if (status.done) {
-      console.log(
-        status.ok
-          ? `Job completed at ${status.completedAt?.toISOString()}`
-          : `Job failed: ${status.failureReason}`,
-      );
-      break;
-    }
-    await sleep(1000);
-  }
+  // waitForJob wraps getJobStatus in a poll loop bounded by a default
+  // 5-minute deadline (it throws PagrTimeoutError if that elapses), so it
+  // can never spin forever on a stuck job.
+  const status = await client.waitForJob(job.jobId, { pollIntervalMs: 1000 });
+  console.log(
+    status.ok
+      ? `Job completed at ${status.completedAt?.toISOString()}`
+      : `Job failed: ${status.failureReason}`,
+  );
 }
 
 main().catch((err: unknown) => {
